@@ -53,8 +53,10 @@ func TestNotifyCommand(t *testing.T) {
 	defer func() { bazelNew = oldBazelNew }()
 
 	c.NotifyOfChanges()
+	c.subprocessRunning.Store(true)
 	b.BuildError(errors.New("Demo error"))
 	c.NotifyOfChanges()
+	c.subprocessRunning.Store(false)
 	b.BuildError(nil)
 	c.NotifyOfChanges()
 
@@ -99,11 +101,16 @@ func TestNotifyCommand_Restart(t *testing.T) {
 	defer func() { execCommand = oldExecCommand }()
 
 	c := &notifyCommand{
-		args:      []string{"moo"},
-		bazelArgs: []string{},
-		pg:        pg,
-		target:    "//path/to:target",
+		args:              []string{"moo"},
+		bazelArgs:         []string{},
+		pg:                pg,
+		target:            "//path/to:target",
 	}
+
+	go func() {
+		pg.Wait()
+		c.subprocessRunning.Store(false)
+	}()
 
 	var err error
 	c.stdin, err = pg.RootProcess().StdinPipe()

@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"runtime"
 	"strings"
 	"syscall"
@@ -82,42 +81,22 @@ func start(b bazel.Bazel, target string, args []string) (*bytes.Buffer, process_
 	return outputBuffer, cmd
 }
 
-func subprocessRunning(cmd *exec.Cmd) bool {
-	if cmd == nil {
-		return false
-	}
-	if cmd.Process == nil {
-		return false
-	}
-	if cmd.ProcessState != nil {
-		if cmd.ProcessState.Exited() {
-			return false
-		}
-	}
-
-	return true
-}
-
-func terminate(pg process_group.ProcessGroup) {
+func terminate(pg process_group.ProcessGroup, doneChan chan bool) {
 	pg.Signal(syscall.SIGTERM)
-	done := make(chan bool, 1)
 	go func() {
 		select {
 		case <-time.After(*waitDuration):
 			log.Logf("The subprocess wasn't terminated within %s. Forcing to close.", *waitDuration)
 			kill(pg)
-		case <-done:
+			<-doneChan
+		case <-doneChan:
 			// The subprocess was terminated with SIGTERM
 		}
 	}()
-	pg.Wait()
-	done <- true
 	pg.Close()
 }
 
 func kill(pg process_group.ProcessGroup) {
-	if subprocessRunning(pg.RootProcess()) {
-		log.Logf("Sending SIGKILL to the subprocess")
-		pg.Signal(syscall.SIGKILL)
-	}
+	log.Log("Sending SIGKILL to the subprocess")
+	pg.Signal(syscall.SIGKILL)
 }

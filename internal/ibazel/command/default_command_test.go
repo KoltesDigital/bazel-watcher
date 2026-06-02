@@ -57,6 +57,7 @@ func TestDefaultCommand(t *testing.T) {
 	}
 
 	toKill.Start()
+	c.subprocessRunning.Store(true)
 
 	if !c.IsSubprocessRunning() {
 		t.Errorf("New subprocess was never started. State: %v", toKill.RootProcess().ProcessState)

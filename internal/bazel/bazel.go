@@ -142,7 +142,6 @@ type Bazel interface {
 	Norun(args ...string) (*bytes.Buffer, error)
 	Test(args ...string) (*bytes.Buffer, error)
 	Run(args ...string) (*exec.Cmd, *bytes.Buffer, error)
-	Wait() error
 	Cancel()
 }
 
@@ -415,16 +414,6 @@ func (b *bazel) Run(args ...string) (*exec.Cmd, *bytes.Buffer, error) {
 	}
 
 	return b.cmd, stderrBuffer, err
-}
-
-func (b *bazel) Wait() error {
-	res := b.cmd.Wait()
-	if res.Error() == "exec: Wait was already called" {
-		if b.cmd.ProcessState.Success() {
-			return nil
-		}
-	}
-	return res
 }
 
 // Cancel the currently running operation. Useful if you call Run(target) and

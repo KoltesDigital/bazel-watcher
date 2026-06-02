@@ -187,6 +187,9 @@ func (i *IBazel) SetDebounceDuration(debounceDuration time.Duration) {
 }
 
 func (i *IBazel) Cleanup() {
+	if i.cmd != nil {
+		i.cmd.Terminate()
+	}
 	i.buildFileWatcher.Close()
 	i.sourceFileWatcher.Close()
 	for _, l := range i.lifecycleListeners {

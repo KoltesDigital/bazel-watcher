@@ -19,8 +19,6 @@ import (
 	"testing"
 
 	"github.com/bazelbuild/bazel-watcher/internal/bazel"
-	"github.com/bazelbuild/bazel-watcher/internal/ibazel/log"
-	"github.com/bazelbuild/bazel-watcher/internal/ibazel/process_group"
 )
 
 var oldExecCommand = execCommand
@@ -35,39 +33,5 @@ func assertKilled(t *testing.T, cmd *exec.Cmd) {
 		if cmd.ProcessState == nil {
 			t.Errorf("Killable subprocess was never started. State: %v, Err: %v", cmd.ProcessState, err)
 		}
-	}
-}
-
-func TestSubprocessRunning(t *testing.T) {
-	log.SetLogger(t)
-
-	execCommand = func(name string, args ...string) process_group.ProcessGroup {
-		return oldExecCommand("ls") // Every system has ls.
-	}
-	defer func() { execCommand = oldExecCommand }()
-
-	if subprocessRunning(nil) {
-		t.Errorf("Nil subprocesses don't run")
-	}
-
-	cmd := exec.Command("sleep", ".1")
-
-	if subprocessRunning(cmd) {
-		t.Errorf("New subprocess shouldn't have been started yet. State: %v", cmd.ProcessState)
-	}
-
-	if err := cmd.Start(); err != nil {
-		t.Errorf("cmd.Start(): %v", err)
-	}
-
-	if !subprocessRunning(cmd) {
-		t.Errorf("New subprocess was never started. State: %v", cmd.ProcessState)
-	}
-
-	err := cmd.Wait()
-	if err != nil {
-		t.Errorf("Subprocess finished with error: %v State: %v", err, cmd.ProcessState)
-	} else if subprocessRunning(cmd) {
-		t.Errorf("Subprocess still running State: %v", cmd.ProcessState)
 	}
 }

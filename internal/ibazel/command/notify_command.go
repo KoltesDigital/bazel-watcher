@@ -18,20 +18,24 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"os/exec"
 	"sync"
+	"sync/atomic"
 
 	"github.com/bazelbuild/bazel-watcher/internal/ibazel/log"
 	"github.com/bazelbuild/bazel-watcher/internal/ibazel/process_group"
 )
 
 type notifyCommand struct {
-	target      string
-	startupArgs []string
-	bazelArgs   []string
-	args        []string
-	pg          process_group.ProcessGroup
-	stdin       io.WriteCloser
-	termSync    sync.Once
+	target            string
+	startupArgs       []string
+	bazelArgs         []string
+	args              []string
+	pg                process_group.ProcessGroup
+	stdin             io.WriteCloser
+	termSync          sync.Once
+	doneChan          chan bool
+	subprocessRunning atomic.Bool
 }
 
 // NotifyCommand is an alternate mode for starting a command. In this mode the
@@ -51,13 +55,14 @@ func (c *notifyCommand) Terminate() {
 		return
 	}
 	c.termSync.Do(func() {
-		terminate(c.pg)
+		terminate(c.pg, c.doneChan)
 	})
 	c.pg = nil
+	c.subprocessRunning.Store(false)
 }
 
 func (c *notifyCommand) Kill() {
-	if c.pg != nil {
+	if !c.IsSubprocessRunning() {
 		kill(c.pg)
 	}
 }
@@ -71,22 +76,42 @@ func (c *notifyCommand) Start() (*bytes.Buffer, error) {
 	b.WriteToStdout(true)
 
 	var outputBuffer *bytes.Buffer
-	outputBuffer, c.pg = start(b, c.target, c.args)
+	outputBuffer, pg := start(b, c.target, c.args)
+	c.pg = pg
+	doneChan := make(chan bool, 1)
+	c.doneChan = doneChan
+	c.subprocessRunning.Store(true)
+
 	// Keep the writer around.
 	var err error
-	c.stdin, err = c.pg.RootProcess().StdinPipe()
+	c.stdin, err = pg.RootProcess().StdinPipe()
 	if err != nil {
 		log.Errorf("Error getting stdin pipe: %v", err)
 		return outputBuffer, err
 	}
 
-	c.pg.RootProcess().Env = append(os.Environ(), "IBAZEL_NOTIFY_CHANGES=y")
+	pg.RootProcess().Env = append(os.Environ(), "IBAZEL_NOTIFY_CHANGES=y")
 
-	if err = c.pg.Start(); err != nil {
+	if err = pg.Start(); err != nil {
 		log.Errorf("Error starting process: %v", err)
 		return outputBuffer, err
 	}
 	log.Log("Starting...")
+
+	logf := log.Logf
+	go func() {
+		err := pg.Wait()
+
+		code := 0
+		if exiterr, ok := err.(*exec.ExitError); ok {
+			code = exiterr.ExitCode()
+		}
+		logf("Exited (%d)", code)
+
+		doneChan <- true
+		c.subprocessRunning.Store(false)
+	}()
+
 	c.termSync = sync.Once{}
 	return outputBuffer, nil
 }
@@ -127,5 +152,5 @@ func (c *notifyCommand) NotifyOfChanges() *bytes.Buffer {
 }
 
 func (c *notifyCommand) IsSubprocessRunning() bool {
-	return c.pg != nil && subprocessRunning(c.pg.RootProcess())
+	return c.subprocessRunning.Load()
 }

@@ -105,7 +105,7 @@ func (m *mockCommand) NotifyOfChanges() *bytes.Buffer {
 }
 func (m *mockCommand) Terminate() {
 	if !m.started {
-		panic("Terminated before starting")
+		return
 	}
 	m.signalChan <- syscall.SIGTERM
 	<-m.doTermChan
